@@ -143,8 +143,16 @@ function highlight(text) {
     const url = URL_RX.exec(s.slice(i));
     if (url) {
       flush();
-      out += `<a href="${escape(url[0])}" target="_blank" rel="noopener">${escape(url[0])}</a>`;
-      i += url[0].length;
+      const u = url[0];
+      // Render https://t.me/<username> URLs as Telegram contact chips —
+      // same icon-first, no-@ display as the @-mention case.
+      const tm = /^https?:\/\/t\.me\/([a-zA-Z0-9_]{4,32})(?:[/?#]|$)/i.exec(u);
+      if (tm) {
+        out += `<a class="tg-link" href="${escape(u)}" target="_blank" rel="noopener">${TG_ICON}${escape(tm[1])}</a>`;
+      } else {
+        out += `<a href="${escape(u)}" target="_blank" rel="noopener">${escape(u)}</a>`;
+      }
+      i += u.length;
       continue;
     }
     const tg = TG_RX.exec(s.slice(i));
