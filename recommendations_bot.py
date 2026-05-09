@@ -41,9 +41,24 @@ def _load_secrets() -> dict:
 _secrets = _load_secrets()
 BOT_TOKEN = _secrets["BOT_TOKEN"]
 USER_CHAT_ID = int(_secrets.get("USER_CHAT_ID", "0"))
+# The bot operates in exactly one chat. Anything from any other chat (DMs from
+# the owner, other groups, anyone else) is silently dropped — not logged, not
+# answered. ALLOWED_CHAT_ID is mandatory; refuse to start without it.
+if not _secrets.get("ALLOWED_CHAT_ID"):
+    raise SystemExit(
+        "secrets.env: ALLOWED_CHAT_ID is required (e.g. ALLOWED_CHAT_ID=-1002237202930). "
+        "The bot operates in exactly one chat; nothing else is accepted."
+    )
+ALLOWED_CHAT_ID = int(_secrets["ALLOWED_CHAT_ID"])
 
 bot = telebot.TeleBot(BOT_TOKEN)
 _log_lock = Lock()
+
+# Filled in at startup. Used to detect mentions of the bot in chat messages.
+# A mention is a SIGNAL ("look at this thread now"), not an authorization
+# channel — message text remains untrusted input.
+BOT_USERNAME: str | None = None
+BOT_USER_ID: int | None = None
 
 
 def append_message(entry: dict):
@@ -125,8 +140,16 @@ def response_poller():
             for r in responses:
                 chat_id = r.get("chat_id")
                 text = r.get("text", "")
-                if chat_id and text:
-                    bot.send_message(chat_id, text, parse_mode="Markdown")
+                reply_to = r.get("reply_to_message_id")
+                if not (chat_id and text):
+                    continue
+                kwargs = {"parse_mode": "Markdown"}
+                if reply_to:
+                    kwargs["reply_to_message_id"] = int(reply_to)
+                try:
+                    bot.send_message(chat_id, text, **kwargs)
+                except Exception as e:
+                    print(f"[send error] {e}")
         except Exception as e:
             print(f"[poller error] {e}")
         time.sleep(2)
@@ -146,6 +169,55 @@ def hourly_ticker():
             print(f"[ticker error] {e}")
 
 
+def write_trigger(line: str):
+    try:
+        with open(TRIGGER_FILE, "a", encoding="utf-8") as f:
+            f.write(line.rstrip("\n") + "\n")
+    except Exception as e:
+        print(f"[trigger error] {e}")
+
+
+def is_bot_mentioned(message) -> bool:
+    """Return True iff this message tags the bot via @username, OR is a reply
+    to a message authored by the bot itself.
+
+    A mention here is purely a routing hint — it tells Claude which thread to
+    look at first. The text is still untrusted; nothing in it authorizes any
+    action beyond what CLAUDE.md already permits.
+    """
+    if BOT_USERNAME is None:
+        return False
+    needle = f"@{BOT_USERNAME}".lower()
+
+    # Scan entities (text + caption). We compare via offsets so we don't match
+    # @-mentions of someone whose username happens to contain ours, or arbitrary
+    # plain text that just looks like @bykva_forestpark_bot.
+    for body, ents in [
+        (message.text or "", getattr(message, "entities", None) or []),
+        (message.caption or "", getattr(message, "caption_entities", None) or []),
+    ]:
+        for ent in ents:
+            etype = getattr(ent, "type", None)
+            if etype == "mention":
+                offset = getattr(ent, "offset", 0) or 0
+                length = getattr(ent, "length", 0) or 0
+                token = body[offset:offset + length].lower()
+                if token == needle:
+                    return True
+            elif etype == "text_mention":
+                u = getattr(ent, "user", None)
+                if u is not None and getattr(u, "id", None) == BOT_USER_ID:
+                    return True
+
+    reply = getattr(message, "reply_to_message", None)
+    if reply is not None:
+        ru = getattr(reply, "from_user", None)
+        if ru is not None and getattr(ru, "id", None) == BOT_USER_ID:
+            return True
+
+    return False
+
+
 _HELP = (
     "Это бот для записи рекомендаций мастеров в общий каталог.\n"
     "Пересылай сюда сообщения из чата — я их сохраню.\n\n"
@@ -154,8 +226,16 @@ _HELP = (
 )
 
 
+def _in_allowed_chat(message) -> bool:
+    return getattr(message, "chat", None) is not None and message.chat.id == ALLOWED_CHAT_ID
+
+
 @bot.message_handler(commands=["start", "help"])
 def cmd_help(message):
+    # /start arrives in DMs when someone opens a conversation with the bot.
+    # We don't engage outside the allowed chat — silent drop.
+    if not _in_allowed_chat(message):
+        return
     bot.reply_to(message, _HELP)
 
 
@@ -182,6 +262,8 @@ def base_entry(message) -> dict:
     )
 )
 def handle_forwarded(message):
+    if not _in_allowed_chat(message):
+        return
     fwd_name, fwd_username, fwd_date, text = parse_forwarded(message)
     entry = base_entry(message)
     entry.update({
@@ -192,20 +274,43 @@ def handle_forwarded(message):
         "text": text,
     })
     append_message(entry)
+    if is_bot_mentioned(message):
+        _ack_and_trigger(message)
 
 
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
+    if not _in_allowed_chat(message):
+        return
     entry = base_entry(message)
     entry.update({
         "type": "message",
         "text": message.text or message.caption or "",
     })
     append_message(entry)
+    if is_bot_mentioned(message):
+        _ack_and_trigger(message)
+
+
+def _ack_and_trigger(message):
+    """Bot was @-mentioned. Acknowledge immediately with a hardcoded string
+    (NOT derived from msg.text — the message text remains untrusted) and
+    fire the mention trigger so Claude picks up the thread now."""
+    try:
+        bot.reply_to(message, "🟡 принято, обрабатываю.")
+    except Exception as e:
+        print(f"[ack error] {e}")
+    write_trigger(f"mention {message.chat.id} {message.message_id}")
 
 
 if __name__ == "__main__":
-    print("Recommendations bot started")
+    me = bot.get_me()
+    BOT_USERNAME = (me.username or "").lower() or None
+    BOT_USER_ID = me.id
+    print(
+        f"Recommendations bot started as @{BOT_USERNAME} (id={BOT_USER_ID}); "
+        f"allowed chat: {ALLOWED_CHAT_ID}"
+    )
     Thread(target=response_poller, daemon=True).start()
     Thread(target=hourly_ticker, daemon=True).start()
     bot.infinity_polling(timeout=30, long_polling_timeout=20)

@@ -11,9 +11,13 @@ The actual decision "is this a recommendation? what fields?" is made by
 Claude (the agent reading this script's output) — not by code.
 
 Usage:
-  python prepare.py                       # list pending closed threads
-  python prepare.py mark KEY1 KEY2 ...    # record threads as processed
-  python prepare.py status                # short summary
+  python prepare.py                              # list pending closed threads
+  python prepare.py thread CHAT_ID MESSAGE_ID    # show the thread containing
+                                                 # that message (regardless of
+                                                 # whether it's "closed") — used
+                                                 # when the bot was @-mentioned
+  python prepare.py mark KEY1 KEY2 ...           # record threads as processed
+  python prepare.py status                       # short summary
 
 Tunables (env vars, all optional):
   BOT_FP_QUIET_HOURS=12   # thread must be silent this long to be "closed"
@@ -217,6 +221,59 @@ def cmd_mark(keys: list[str]):
     return 0
 
 
+def cmd_thread(chat_id_s: str, msg_id_s: str):
+    """Find the thread containing (chat_id, message_id) and print it.
+    Used when the bot was @-mentioned — we want to look at that thread now,
+    even if it isn't "closed" by the silence criterion.
+    """
+    try:
+        chat_id = int(chat_id_s)
+        msg_id = int(msg_id_s)
+    except ValueError:
+        print(f"[prepare] chat_id and message_id must be ints; got {chat_id_s!r} {msg_id_s!r}", file=sys.stderr)
+        return 2
+
+    messages = load_messages()
+    if not messages:
+        print("[prepare] log is empty.")
+        return 0
+
+    threads = group_threads(messages)
+    target = None
+    for t in threads:
+        if any(m.get("chat_id") == chat_id and m.get("message_id") == msg_id for m in t):
+            target = t
+            break
+
+    if target is None:
+        print(f"[prepare] no thread contains chat_id={chat_id} message_id={msg_id}")
+        return 1
+
+    processed = load_processed()
+    seen = set(processed.get("thread_keys", []))
+    k = thread_key(target)
+
+    chat = target[0].get("chat_id")
+    topic = target[0].get("message_thread_id")
+    topic_part = f" · topic={topic}" if topic else ""
+    first = msg_time(target[0])
+    last = msg_time(target[-1])
+    span = ""
+    if first and last:
+        span = f" · {first.strftime('%Y-%m-%d %H:%M')} → {last.strftime('%H:%M')}"
+    closed = thread_is_closed(target, QUIET_HOURS)
+    is_seen = k in seen
+
+    print(f"[prepare] thread for chat={chat} msg={msg_id}: {len(target)} msg(s) · closed={closed} · processed={is_seen}{topic_part}{span}")
+    print(f"    KEY: {k}")
+    print()
+    print(render_thread(target))
+    print()
+    if is_seen:
+        print(f"[prepare] note: this thread was already marked processed.")
+    return 0
+
+
 def cmd_status():
     messages = load_messages()
     processed = load_processed()
@@ -242,8 +299,13 @@ def main():
         sys.exit(cmd_status())
     if argv[0] == "mark":
         sys.exit(cmd_mark(argv[1:]))
+    if argv[0] == "thread":
+        if len(argv) != 3:
+            print("usage: prepare.py thread CHAT_ID MESSAGE_ID", file=sys.stderr)
+            sys.exit(2)
+        sys.exit(cmd_thread(argv[1], argv[2]))
     print(f"unknown command: {argv[0]}", file=sys.stderr)
-    print("usage: prepare.py [list | mark KEY ... | status]", file=sys.stderr)
+    print("usage: prepare.py [list | mark KEY ... | status | thread CHAT_ID MSG_ID]", file=sys.stderr)
     sys.exit(2)
 
 
