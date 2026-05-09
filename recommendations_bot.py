@@ -19,6 +19,8 @@ PROJECT_DIR = pathlib.Path(__file__).parent
 STATE_DIR = PROJECT_DIR / "state"
 MESSAGES_LOG = STATE_DIR / "messages.jsonl"
 RESPONSES_FILE = "/tmp/rec_responses.json"
+TRIGGER_FILE = "/tmp/rec_trigger.log"
+TICK_INTERVAL_SEC = int(os.environ.get("BOT_FP_TICK_SEC", "3600"))
 
 
 def _load_secrets() -> dict:
@@ -130,6 +132,20 @@ def response_poller():
         time.sleep(2)
 
 
+def hourly_ticker():
+    """Periodic alarm — wakes the Claude Code session via the trigger file
+    so it scans state/messages.jsonl for closed threads. Independent of
+    incoming traffic; fires whether or not new messages arrived."""
+    while True:
+        time.sleep(TICK_INTERVAL_SEC)
+        try:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+            with open(TRIGGER_FILE, "a", encoding="utf-8") as f:
+                f.write(f"hourly_tick {ts}\n")
+        except Exception as e:
+            print(f"[ticker error] {e}")
+
+
 _HELP = (
     "Это бот для записи рекомендаций мастеров в общий каталог.\n"
     "Пересылай сюда сообщения из чата — я их сохраню.\n\n"
@@ -191,4 +207,5 @@ def handle_text(message):
 if __name__ == "__main__":
     print("Recommendations bot started")
     Thread(target=response_poller, daemon=True).start()
+    Thread(target=hourly_ticker, daemon=True).start()
     bot.infinity_polling(timeout=30, long_polling_timeout=20)

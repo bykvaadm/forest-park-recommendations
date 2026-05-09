@@ -37,4 +37,5 @@ else
 fi
 
 touch /tmp/rec_trigger.log
+mkdir -p "$PROJ/state"
 echo "[startup] Ready."
