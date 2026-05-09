@@ -495,6 +495,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .contact-row .ic.ic-link {
   color: var(--accent);
 }
+
+/* Messenger row already has the Telegram icon in its left column —
+   suppress the duplicate icon that the @-mention link emits inline. */
+.contact-row .ic-tg ~ .val .tg-link .tg-icon { display: none; }
+.contact-row .ic-tg ~ .val .tg-link { gap: 0; }
 .contact-row .ic .tg-icon,
 .contact-row .ic .phone-icon,
 .contact-row .ic .link-icon {
