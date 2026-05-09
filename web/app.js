@@ -112,14 +112,16 @@ function matches(it) {
   return true;
 }
 
-// Render text with three decorations:
+// Render text with up to four decorations:
 //   - search highlight (<mark>) when STATE.search is non-empty;
-//   - URL → clickable <a href>;
-//   - @username → clickable <a href="https://t.me/username">.
-// Search match takes priority over URL/@ when ranges overlap, so the
+//   - URL → clickable <a href> (with t.me/<user> rendered as a Telegram chip);
+//   - @username → clickable <a href="https://t.me/username">;
+//   - #NNNN reference → clickable link to the original chat message,
+//     when an optional `refs` map (id → URL) is provided.
+// Search match takes priority over the rest when ranges overlap, so the
 // highlight is honest. Output is HTML-escaped piece by piece — never
 // concatenated to escape() of a string already containing tags.
-function highlight(text) {
+function highlight(text, refs) {
   if (text === null || text === undefined || text === "") return "";
   const s = String(text);
   const q = STATE.search;
@@ -127,6 +129,7 @@ function highlight(text) {
   const qLo = q ? q.toLowerCase() : "";
   const URL_RX = /^https?:\/\/[^\s<]+/;
   const TG_RX = /^@([a-zA-Z0-9_]{4,32})\b/;
+  const REF_RX = /^#(\d{1,7})\b/;
 
   let out = "";
   let plain = "";
@@ -161,6 +164,18 @@ function highlight(text) {
       out += `<a class="tg-link" href="https://t.me/${tg[1]}" target="_blank" rel="noopener">${TG_ICON}${escape(tg[1])}</a>`;
       i += tg[0].length;
       continue;
+    }
+    if (refs) {
+      const r = REF_RX.exec(s.slice(i));
+      if (r) {
+        const url = refs[r[1]];
+        if (url) {
+          flush();
+          out += `<a class="msg-ref" href="${escape(url)}" target="_blank" rel="noopener">#${escape(r[1])}</a>`;
+          i += r[0].length;
+          continue;
+        }
+      }
     }
     plain += s[i];
     i++;
@@ -220,6 +235,14 @@ function render() {
   });
 }
 
+function sourceRefsMap(it) {
+  if (!it.source_refs || !it.source_refs.length) return null;
+  const m = {};
+  for (const r of it.source_refs) m[r.id] = r.url;
+  return m;
+}
+
+
 function openModal(it) {
   const phones = it.phones.length
     ? `<ul>${it.phones.map(p => `<li>${phoneLink(p)}</li>`).join("")}</ul>` : "<p style='color:var(--text-dim)'>—</p>";
@@ -250,7 +273,7 @@ function openModal(it) {
     ${it.description ? `<div class="m-section"><h3>что делал</h3><p>${highlight(it.description)}</p></div>` : ""}
     ${it.review ? `<div class="m-section"><h3>оценка</h3><p>${highlight(it.review)}</p></div>` : ""}
     ${it.caveats ? `<div class="m-section"><h3>оговорки</h3><p>${highlight(it.caveats)}</p></div>` : ""}
-    ${it.source ? `<div class="m-section"><h3>исходное сообщение</h3><div class="source">${highlight(it.source)}</div></div>` : ""}
+    ${it.source ? `<div class="m-section"><h3>исходное сообщение</h3><div class="source">${highlight(it.source, sourceRefsMap(it))}</div></div>` : ""}
   `;
   $("#modal").classList.remove("hidden");
   document.body.style.overflow = "hidden";
