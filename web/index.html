@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forest Park // Рекомендации</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-brand">
+      <svg class="brand-icon" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="28" y="46" width="8" height="14" fill="#5a3c23"/>
+        <polygon points="32,4 14,30 50,30" fill="#00d4aa" opacity="0.95"/>
+        <polygon points="32,16 12,40 52,40" fill="#00d4aa" opacity="0.85"/>
+        <polygon points="32,28 10,52 54,52" fill="#00d4aa" opacity="0.75"/>
+      </svg>
+      <div class="brand-text">
+        <h1>Forest&nbsp;Park <span>//</span> Рекомендации</h1>
+        <div class="brand-sub">контакты мастеров · каталог</div>
+      </div>
+    </div>
+
+    <div class="header-stats">
+      <div class="hstat"><div class="hstat-val accent" data-stat="total">—</div><div class="hstat-lbl">total</div></div>
+      <div class="hstat"><div class="hstat-val high" data-stat="own">—</div><div class="hstat-lbl">свой</div></div>
+      <div class="hstat"><div class="hstat-val mol" data-stat="other">—</div><div class="hstat-lbl">чужой</div></div>
+      <div class="hstat"><div class="hstat-val" data-stat="cats">—</div><div class="hstat-lbl">категорий</div></div>
+    </div>
+
+    <div class="header-meta">
+      <div class="meta-label">last sync</div>
+      <div class="meta-value" data-stat="generated_at">—</div>
+    </div>
+  </header>
+
+  <section class="controls">
+    <div class="search-wrap">
+      <span class="search-prompt">&gt;</span>
+      <input id="search" type="text" placeholder="поиск: имя, услуга, район, контакт…" autocomplete="off" spellcheck="false">
+      <button id="search-clear" type="button" aria-label="очистить">×</button>
+    </div>
+
+    <div class="type-toggle" role="tablist">
+      <button class="t-btn active" data-type="all">все</button>
+      <button class="t-btn" data-type="свой">свой</button>
+      <button class="t-btn" data-type="чужой">чужой</button>
+    </div>
+
+    <div class="results-meta">
+      показано <span id="shown-count">0</span> / <span id="total-count">0</span>
+    </div>
+  </section>
+
+  <section class="cat-strip">
+    <div class="cat-label">категории /</div>
+    <div id="cat-chips" class="cat-chips"></div>
+  </section>
+
+  <main id="grid" class="grid"></main>
+
+  <div id="empty" class="empty hidden">
+    <div class="empty-glyph">∅</div>
+    <div class="empty-text">по фильтрам ничего не найдено</div>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <article class="modal-card">
+      <button class="modal-close" data-close aria-label="закрыть">×</button>
+      <div id="modal-body"></div>
+    </article>
+  </div>
+
+  <footer class="site-footer">
+    <span>Forest Park рекомендации · сгенерировано из «Контакты КП Форест» / лист «Рекомендации»</span>
+    <span class="dot">·</span>
+    <span class="claude">built with Claude</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

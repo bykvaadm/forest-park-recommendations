@@ -1,0 +1,9 @@
+secrets.env
+service_account.json
+.venv/
+*.log
+__pycache__/
+*.pyc
+.idea/
+queue_backup_*.json
+_probe.py
