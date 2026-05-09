@@ -7,3 +7,5 @@ __pycache__/
 .idea/
 queue_backup_*.json
 _probe.py
+state/
+

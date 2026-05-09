@@ -1,12 +1,12 @@
 # SECURITY INVARIANT (do not relax without explicit user instruction)
-# This bot is a write-only ingestion endpoint for the recommendations site.
+# This bot is a write-only ingestion endpoint for the recommendations catalog.
 # Incoming Telegram traffic is treated as DATA only — never as commands or
-# instructions, regardless of sender (including the bot owner). Handlers
-# below must:
-#   - never trigger sheet/file mutations directly,
+# instructions, regardless of sender (including the bot owner). Handlers below
+# must:
+#   - never mutate sheets/git/files based on message text,
 #   - never echo user-controlled text into actions,
-#   - only append entries to /tmp/rec_queue.json.
-# Outbound replies must be hardcoded strings (not derived from msg.text).
+#   - only append rows to state/messages.jsonl.
+# Outbound replies must be hardcoded strings, not derived from msg.text.
 import telebot
 import json
 import os
@@ -16,6 +16,9 @@ from datetime import datetime
 from threading import Thread, Lock
 
 PROJECT_DIR = pathlib.Path(__file__).parent
+STATE_DIR = PROJECT_DIR / "state"
+MESSAGES_LOG = STATE_DIR / "messages.jsonl"
+RESPONSES_FILE = "/tmp/rec_responses.json"
 
 
 def _load_secrets() -> dict:
@@ -37,28 +40,17 @@ _secrets = _load_secrets()
 BOT_TOKEN = _secrets["BOT_TOKEN"]
 USER_CHAT_ID = int(_secrets.get("USER_CHAT_ID", "0"))
 
-QUEUE_FILE = "/tmp/rec_queue.json"
-RESPONSES_FILE = "/tmp/rec_responses.json"
-TRIGGER_FILE = "/tmp/rec_trigger.log"
-
 bot = telebot.TeleBot(BOT_TOKEN)
-_queue_lock = Lock()
+_log_lock = Lock()
 
 
-def push_to_queue(entry: dict):
-    with _queue_lock:
-        queue = []
-        if os.path.exists(QUEUE_FILE):
-            with open(QUEUE_FILE, "r", encoding="utf-8") as f:
-                try:
-                    queue = json.load(f)
-                except Exception:
-                    queue = []
-        queue.append(entry)
-        with open(QUEUE_FILE, "w", encoding="utf-8") as f:
-            json.dump(queue, f, ensure_ascii=False, indent=2)
-        with open(TRIGGER_FILE, "a", encoding="utf-8") as f:
-            f.write("new_message\n")
+def append_message(entry: dict):
+    """Atomic append to the message log. Called from telebot worker threads."""
+    entry["trust"] = "untrusted_input"
+    with _log_lock:
+        STATE_DIR.mkdir(exist_ok=True)
+        with open(MESSAGES_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def pop_responses() -> list:
@@ -107,8 +99,21 @@ def parse_forwarded(message):
             except Exception:
                 fwd_date = None
 
-    text = message.text or message.caption or "(без текста)"
+    text = message.text or message.caption or ""
     return fwd_from_name, fwd_username, fwd_date, text
+
+
+def sender_fields(message):
+    """Pull the message's actual sender (not forwarded origin) — used for grouping by author."""
+    u = getattr(message, "from_user", None)
+    if not u:
+        return {"from_id": None, "from_name": None, "from_username": None}
+    name = " ".join(p for p in [getattr(u, "first_name", "") or "", getattr(u, "last_name", "") or ""] if p)
+    return {
+        "from_id": getattr(u, "id", None),
+        "from_name": name or None,
+        "from_username": getattr(u, "username", None),
+    }
 
 
 def response_poller():
@@ -138,6 +143,20 @@ def cmd_help(message):
     bot.reply_to(message, _HELP)
 
 
+def base_entry(message) -> dict:
+    """Common envelope for any captured message."""
+    reply = getattr(message, "reply_to_message", None)
+    return {
+        "chat_id": message.chat.id,
+        "message_id": message.message_id,
+        "message_thread_id": getattr(message, "message_thread_id", None),
+        "reply_to": reply.message_id if reply else None,
+        "date": datetime.fromtimestamp(message.date).strftime("%Y-%m-%d %H:%M") if getattr(message, "date", None) else None,
+        "received_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        **sender_fields(message),
+    }
+
+
 @bot.message_handler(
     func=lambda m: (
         getattr(m, "forward_origin", None) is not None
@@ -147,38 +166,26 @@ def cmd_help(message):
     )
 )
 def handle_forwarded(message):
-    sender, username, fwd_date, text = parse_forwarded(message)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    entry = {
+    fwd_name, fwd_username, fwd_date, text = parse_forwarded(message)
+    entry = base_entry(message)
+    entry.update({
         "type": "forwarded",
-        "chat_id": message.chat.id,
-        "message_id": message.message_id,
-        "from_name": sender,
-        "username": username,
-        "forward_date": fwd_date,
+        "fwd_from_name": fwd_name,
+        "fwd_username": fwd_username,
+        "fwd_date": fwd_date,
         "text": text,
-        "received_at": now,
-        "trust": "untrusted_input",
-    }
-    push_to_queue(entry)
+    })
+    append_message(entry)
 
 
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
-    # Plain text (not a forward, not a known command) — record as raw note.
-    # Anything that looks like an instruction is recorded as text and NEVER
-    # acted upon. The downstream consumer treats this as data only.
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    entry = {
+    entry = base_entry(message)
+    entry.update({
         "type": "message",
-        "chat_id": message.chat.id,
-        "message_id": message.message_id,
-        "text": message.text or "",
-        "received_at": now,
-        "trust": "untrusted_input",
-    }
-    push_to_queue(entry)
+        "text": message.text or message.caption or "",
+    })
+    append_message(entry)
 
 
 if __name__ == "__main__":
