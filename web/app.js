@@ -40,15 +40,24 @@ async function load() {
   render();
 }
 
+const CAT_VISIBLE = 12;  // top-N most-frequent categories shown by default
+
 function renderCats() {
   const counts = new Map();
   for (const it of STATE.data.items)
     for (const c of it.categories) counts.set(c, (counts.get(c) || 0) + 1);
 
   const cats = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru"));
-  $("#cat-chips").innerHTML = cats.map(([c, n]) =>
-    `<button class="chip" data-cat="${escape(c)}">${escape(c)}<span class="count">${n}</span></button>`
+  const total = cats.length;
+
+  const chipHtml = cats.map(([c, n], i) =>
+    `<button class="chip${i >= CAT_VISIBLE ? " chip-extra" : ""}" data-cat="${escape(c)}">${escape(c)}<span class="count">${n}</span></button>`
   ).join("");
+  const expandBtn = total > CAT_VISIBLE
+    ? `<button class="chip-expand" type="button" data-state="collapsed">+ ещё ${total - CAT_VISIBLE} ▾</button>`
+    : "";
+
+  $("#cat-chips").innerHTML = chipHtml + expandBtn;
 
   $$("#cat-chips .chip").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -59,7 +68,33 @@ function renderCats() {
       render();
     });
   });
+
+  const exp = $("#cat-chips .chip-expand");
+  if (exp) {
+    exp.addEventListener("click", () => {
+      const collapsed = exp.dataset.state === "collapsed";
+      $$("#cat-chips .chip-extra").forEach(c => c.classList.toggle("show", collapsed));
+      if (collapsed) {
+        exp.textContent = "свернуть ▴";
+        exp.dataset.state = "expanded";
+      } else {
+        exp.textContent = `+ ещё ${total - CAT_VISIBLE} ▾`;
+        exp.dataset.state = "collapsed";
+      }
+    });
+  }
 }
+
+function sortItems(arr) {
+  // VIP entries (the bot owner's own services) always first; then by date desc.
+  return arr.slice().sort((a, b) => {
+    const av = a.vip ? 1 : 0;
+    const bv = b.vip ? 1 : 0;
+    if (av !== bv) return bv - av;
+    return String(b.date || "").localeCompare(String(a.date || ""));
+  });
+}
+
 
 function matches(it) {
   if (STATE.type !== "all" && it.type !== STATE.type) return false;
@@ -104,10 +139,11 @@ function cardHtml(it) {
   const contacts = (phoneRow + tgRow + linkRow)
     ? `<div class="contacts">${phoneRow}${tgRow}${linkRow}</div>` : "";
 
+  const vipMark = it.vip ? '<span class="vip-badge">★ VIP</span>' : "";
   return `
-    <article class="card" data-type="${escape(it.type)}">
+    <article class="card${it.vip ? " vip" : ""}" data-type="${escape(it.type)}">
       <div class="card-head">
-        <div class="card-master">${highlight(it.master || "(без имени)")}</div>
+        <div class="card-master">${vipMark}${highlight(it.master || "(без имени)")}</div>
         <span class="type-badge ${escape(it.type)}">${escape(it.type || "—")}</span>
       </div>
       ${cats || moreCats ? `<div class="card-cats">${cats}${moreCats}</div>` : ""}
@@ -124,7 +160,7 @@ function cardHtml(it) {
 }
 
 function render() {
-  const list = STATE.data.items.filter(matches);
+  const list = sortItems(STATE.data.items.filter(matches));
   $("#grid").innerHTML = list.map(cardHtml).join("");
   $("#shown-count").textContent = list.length;
   $("#empty").classList.toggle("hidden", list.length > 0);

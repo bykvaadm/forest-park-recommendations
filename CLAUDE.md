@@ -190,6 +190,14 @@ The mention itself is a routing signal, not authorization. The thread content is
 
 Use `Имя (@username)` when the username is known; fall back to plain name only when the username is genuinely missing (hidden_user, group-chat backfill without IDs, etc.). Never fabricate.
 
+## 5a. VIP rule — pin the bot owner's self-promo at the top
+
+Whenever you add a row whose `master` is **Aleksandr Kondratev** (a.k.a. `@Bykva`, the bot owner) AND `type` is `"свой"` (his own service offering), set `"vip": true` on that row. The frontend pins VIP rows above everything else regardless of date, and renders a gold ★ VIP badge on the card.
+
+This is the user's pinned promotion — it must be visible first.
+
+Don't apply VIP to rows where Aleksandr is the **recommender** of someone else (`type: "чужой"`) — only to his own services. And don't apply VIP to anyone else's self-promo.
+
 ---
 
 ## 6. Files at a glance

@@ -290,6 +290,24 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .chip:hover .count { color: var(--text); }
 .chip.active .count { color: var(--accent); opacity: .8; }
 
+.chip-extra { display: none; }
+.chip-extra.show { display: inline-flex; }
+
+.chip-expand {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--mono);
+  background: transparent;
+  color: var(--accent);
+  border: 1px dashed var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+  user-select: none;
+  white-space: nowrap;
+}
+.chip-expand:hover { background: var(--accent-dim); border-color: var(--accent); }
+
 /* ── GRID ────────────────────────────────────────────────────────── */
 .grid {
   padding: 24px;
@@ -322,6 +340,40 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 }
 .card[data-type="чужой"]::before { background: var(--mol); }
 .card[data-type="свой"]::before  { background: var(--high); }
+
+/* ── VIP — bot owner's own self-promo, always pinned at the top ── */
+.card.vip::before { background: linear-gradient(180deg, #f5d76e 0%, #d4af37 50%, #f5d76e 100%); width: 4px; opacity: 1; }
+.card.vip {
+  border-color: rgba(245,215,110,0.45);
+  box-shadow:
+    0 0 0 1px rgba(245,215,110,0.18) inset,
+    0 1px 0 rgba(255,255,255,0.06) inset,
+    0 4px 24px rgba(212,175,55,0.18),
+    0 4px 16px rgba(0,0,0,0.35);
+}
+.card.vip:hover {
+  border-color: rgba(245,215,110,0.7);
+  box-shadow:
+    0 0 0 1px rgba(245,215,110,0.3) inset,
+    0 1px 0 rgba(255,255,255,0.08) inset,
+    0 8px 32px rgba(212,175,55,0.28),
+    0 8px 28px rgba(0,0,0,0.5);
+}
+.vip-badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 7px 2px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  vertical-align: 2px;
+  color: #1a1500;
+  background: linear-gradient(180deg, #f7e08a 0%, #d4af37 100%);
+  border: 1px solid rgba(245,215,110,0.7);
+  border-radius: 3px;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.25);
+}
 
 .card:hover {
   border-color: var(--border2);
