@@ -21,6 +21,12 @@ const phoneLink = p => {
 // inside @-mention links instead of the literal "@" symbol.
 const TG_ICON = '<svg class="tg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.05 4.04 2.96 11.4c-1.04.42-1.03 1.02-.18 1.28l4.64 1.45 10.74-6.78c.51-.31.97-.14.59.2L9.97 14.4l-.34 5.05c.4 0 .58-.18.79-.4l1.91-1.86 3.97 2.93c.73.4 1.25.2 1.43-.68l2.58-12.18c.27-1.07-.4-1.55-1.26-1.22z"/></svg>';
 
+// Phone handset glyph — replaces the ☎ unicode in contact-row icons.
+const PHONE_ICON = '<svg class="phone-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.05-.24c1.16.39 2.42.6 3.71.6a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.29.21 2.55.6 3.71a1 1 0 0 1-.24 1.05l-2.2 2.03z"/></svg>';
+
+// Outbound-link glyph — replaces the ↗ unicode for the website-link row.
+const LINK_ICON = '<svg class="link-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7zM19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7z"/></svg>';
+
 async function load() {
   const res = await fetch("data.json", { cache: "no-store" });
   STATE.data = await res.json();
@@ -161,7 +167,7 @@ function cardHtml(it) {
   const moreCats = it.categories.length > 4 ? `<span class="cat">+${it.categories.length - 4}</span>` : "";
 
   const phoneRow = it.phones.length
-    ? `<div class="contact-row"><span class="ic">☎</span><span class="val phone">${phoneLink(it.phones[0])}${it.phones.length > 1 ? ` <span style="opacity:.5">+${it.phones.length - 1}</span>` : ""}</span></div>`
+    ? `<div class="contact-row"><span class="ic ic-phone">${PHONE_ICON}</span><span class="val phone">${phoneLink(it.phones[0])}${it.phones.length > 1 ? ` <span style="opacity:.5">+${it.phones.length - 1}</span>` : ""}</span></div>`
     : "";
 
   const tgRow = it.messenger
@@ -169,7 +175,7 @@ function cardHtml(it) {
     : "";
 
   const linkRow = it.links.length
-    ? `<div class="contact-row"><span class="ic">↗</span><span class="val">${highlight(it.links[0])}</span></div>`
+    ? `<div class="contact-row"><span class="ic ic-link">${LINK_ICON}</span><span class="val">${highlight(it.links[0])}</span></div>`
     : "";
 
   const contacts = (phoneRow + tgRow + linkRow)
