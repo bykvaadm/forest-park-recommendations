@@ -12,18 +12,14 @@ const escape = s => String(s ?? "").replace(/[&<>"']/g, c => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
 })[c]);
 
-const linkify = s => escape(s).replace(/(https?:\/\/[^\s<]+)/g,
-  '<a href="$1" target="_blank" rel="noopener">$1</a>');
-
-const tgLink = handle => {
-  const m = String(handle).match(/^@?([a-zA-Z0-9_]{4,32})$/);
-  return m ? `<a href="https://t.me/${m[1]}" target="_blank" rel="noopener">@${m[1]}</a>` : escape(handle);
-};
-
 const phoneLink = p => {
   const digits = p.replace(/[^\d+]/g, "");
   return `<a href="tel:${digits}">${escape(p)}</a>`;
 };
+
+// Telegram paper-plane glyph — used both in contact-row icons and inline
+// inside @-mention links instead of the literal "@" symbol.
+const TG_ICON = '<svg class="tg-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.05 4.04 2.96 11.4c-1.04.42-1.03 1.02-.18 1.28l4.64 1.45 10.74-6.78c.51-.31.97-.14.59.2L9.97 14.4l-.34 5.05c.4 0 .58-.18.79-.4l1.91-1.86 3.97 2.93c.73.4 1.25.2 1.43-.68l2.58-12.18c.27-1.07-.4-1.55-1.26-1.22z"/></svg>';
 
 async function load() {
   const res = await fetch("data.json", { cache: "no-store" });
@@ -110,13 +106,53 @@ function matches(it) {
   return true;
 }
 
+// Render text with three decorations:
+//   - search highlight (<mark>) when STATE.search is non-empty;
+//   - URL → clickable <a href>;
+//   - @username → clickable <a href="https://t.me/username">.
+// Search match takes priority over URL/@ when ranges overlap, so the
+// highlight is honest. Output is HTML-escaped piece by piece — never
+// concatenated to escape() of a string already containing tags.
 function highlight(text) {
-  if (!STATE.search) return escape(text);
+  if (text === null || text === undefined || text === "") return "";
+  const s = String(text);
   const q = STATE.search;
-  const parts = String(text).split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"));
-  return parts.map((p, i) =>
-    i % 2 ? `<mark class="hl">${escape(p)}</mark>` : escape(p)
-  ).join("");
+  const lo = q ? s.toLowerCase() : "";
+  const qLo = q ? q.toLowerCase() : "";
+  const URL_RX = /^https?:\/\/[^\s<]+/;
+  const TG_RX = /^@([a-zA-Z0-9_]{4,32})\b/;
+
+  let out = "";
+  let plain = "";
+  const flush = () => { if (plain) { out += escape(plain); plain = ""; } };
+
+  let i = 0;
+  while (i < s.length) {
+    if (qLo && lo.startsWith(qLo, i)) {
+      flush();
+      out += `<mark class="hl">${escape(s.slice(i, i + q.length))}</mark>`;
+      i += q.length;
+      continue;
+    }
+    const url = URL_RX.exec(s.slice(i));
+    if (url) {
+      flush();
+      out += `<a href="${escape(url[0])}" target="_blank" rel="noopener">${escape(url[0])}</a>`;
+      i += url[0].length;
+      continue;
+    }
+    const tg = TG_RX.exec(s.slice(i));
+    if (tg) {
+      flush();
+      out += `<a class="tg-link" href="https://t.me/${tg[1]}" target="_blank" rel="noopener">${TG_ICON}${escape(tg[1])}</a>`;
+      i += tg[0].length;
+      continue;
+    }
+    plain += s[i];
+    i++;
+  }
+  flush();
+  return out;
 }
 
 function cardHtml(it) {
@@ -129,11 +165,11 @@ function cardHtml(it) {
     : "";
 
   const tgRow = it.messenger
-    ? `<div class="contact-row"><span class="ic">✦</span><span class="val">${tgLink(it.messenger)}</span></div>`
+    ? `<div class="contact-row"><span class="ic ic-tg">${TG_ICON}</span><span class="val">${highlight(it.messenger)}</span></div>`
     : "";
 
   const linkRow = it.links.length
-    ? `<div class="contact-row"><span class="ic">↗</span><span class="val">${linkify(it.links[0])}</span></div>`
+    ? `<div class="contact-row"><span class="ic">↗</span><span class="val">${highlight(it.links[0])}</span></div>`
     : "";
 
   const contacts = (phoneRow + tgRow + linkRow)
@@ -174,17 +210,18 @@ function openModal(it) {
   const phones = it.phones.length
     ? `<ul>${it.phones.map(p => `<li>${phoneLink(p)}</li>`).join("")}</ul>` : "<p style='color:var(--text-dim)'>—</p>";
   const links = it.links.length
-    ? `<ul>${it.links.map(l => `<li>${linkify(l)}</li>`).join("")}</ul>` : "";
-  const tg = it.messenger ? `<p>${tgLink(it.messenger)}</p>` : "";
+    ? `<ul>${it.links.map(l => `<li>${highlight(l)}</li>`).join("")}</ul>` : "";
+  const tg = it.messenger ? `<p>${highlight(it.messenger)}</p>` : "";
 
+  const vipMark = it.vip ? '<span class="vip-badge">★ VIP</span>' : "";
   $("#modal-body").innerHTML = `
-    <div class="m-master">${escape(it.master || "(без имени)")}</div>
+    <div class="m-master">${vipMark}${highlight(it.master || "(без имени)")}</div>
     <div class="m-line">
       <span class="type-badge ${escape(it.type)}">${escape(it.type || "—")}</span>
       ${it.categories.map(c => `<span class="cat" style="font-size:11px;padding:3px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:2px;color:var(--text-dim)">${escape(c)}</span>`).join("")}
     </div>
     <div class="m-line">
-      <span>от: <b style="color:var(--text)">${escape(it.recommender)}</b></span>
+      <span>от: <b style="color:var(--text)">${highlight(it.recommender)}</b></span>
       ${it.plot ? `<span>· уч. <b style="color:var(--text)">${escape(it.plot)}</b></span>` : ""}
       ${it.date ? `<span>· ${escape(it.date)}</span>` : ""}
     </div>
@@ -196,10 +233,10 @@ function openModal(it) {
       ${links}
     </div>
 
-    ${it.description ? `<div class="m-section"><h3>что делал</h3><p>${escape(it.description)}</p></div>` : ""}
-    ${it.review ? `<div class="m-section"><h3>оценка</h3><p>${escape(it.review)}</p></div>` : ""}
-    ${it.caveats ? `<div class="m-section"><h3>оговорки</h3><p>${escape(it.caveats)}</p></div>` : ""}
-    ${it.source ? `<div class="m-section"><h3>исходное сообщение</h3><div class="source">${linkify(it.source)}</div></div>` : ""}
+    ${it.description ? `<div class="m-section"><h3>что делал</h3><p>${highlight(it.description)}</p></div>` : ""}
+    ${it.review ? `<div class="m-section"><h3>оценка</h3><p>${highlight(it.review)}</p></div>` : ""}
+    ${it.caveats ? `<div class="m-section"><h3>оговорки</h3><p>${highlight(it.caveats)}</p></div>` : ""}
+    ${it.source ? `<div class="m-section"><h3>исходное сообщение</h3><div class="source">${highlight(it.source)}</div></div>` : ""}
   `;
   $("#modal").classList.remove("hidden");
   document.body.style.overflow = "hidden";
