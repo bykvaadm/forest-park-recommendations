@@ -515,9 +515,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   color: var(--text);
   line-height: 1.55;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  white-space: pre-wrap;
 }
 
 .card-foot {
@@ -649,6 +650,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   line-height: 1.65;
   color: var(--text);
   white-space: pre-wrap;
+  word-break: break-word;
 }
 .m-section ul { padding-left: 18px; }
 .m-section .source {
