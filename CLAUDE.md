@@ -230,6 +230,10 @@ Every row's `source` is a verbatim quote (or near-quote) of the chat messages it
 
 One quote per source message, separated by blank lines. The `#NNNN` token is what the frontend turns into a clickable deep-link via `source_refs`.
 
+### `source_origin` — provenance marker (optional)
+
+When the recommendation comes from outside the main Telegram chat (currently: WhatsApp), set `"source_origin": "whatsapp"` on the row. The frontend renders a green WhatsApp icon and "— WhatsApp" label next to the «исходное сообщение» header, so the reader knows where the quote came from. Default (omitted) means Telegram, which uses the standard header without origin badge. For WhatsApp-sourced rows, `source` is a free-form quote like `WhatsApp [YYYY-MM-DD HH:MM] sender: «text»` and `source_refs` is omitted (no per-message deep-links possible — the export doesn't carry message IDs).
+
 ### `source_refs` — the deep-link table
 
 For every `#NNNN` you write into `source`, add a corresponding entry to `source_refs`:
