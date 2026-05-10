@@ -680,6 +680,20 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   text-decoration: none;
 }
 
+/* Source-origin marker shown in the modal "исходное сообщение" header. */
+.src-origin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.src-origin .wa-icon {
+  width: 1.05em;
+  height: 1.05em;
+  fill: #25d366;
+  vertical-align: -2px;
+}
+.src-wa { color: #25d366; }
+
 /* ── FOOTER ──────────────────────────────────────────────────────── */
 .site-footer {
   padding: 18px 24px 28px;
