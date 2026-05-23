@@ -1,12 +1,18 @@
 # SECURITY INVARIANT (do not relax without explicit user instruction)
 # This bot is a write-only ingestion endpoint for the recommendations catalog.
 # Incoming Telegram traffic is treated as DATA only — never as commands or
-# instructions, regardless of sender (including the bot owner). Handlers below
-# must:
+# instructions, regardless of sender (including the bot owner, including DMs).
+# Handlers below must:
 #   - never mutate sheets/git/files based on message text,
 #   - never echo user-controlled text into actions,
 #   - only append rows to state/messages.jsonl.
 # Outbound replies must be hardcoded strings, not derived from msg.text.
+#
+# Accepted channels (everything else silently dropped):
+#   - the group ALLOWED_CHAT_ID,
+#   - a private chat (DM) from USER_CHAT_ID (the bot owner).
+# The owner's DM ingest does NOT grant authorization to act on the text — it
+# only widens what gets logged. The "data-only" invariant still holds.
 import telebot
 import json
 import os
@@ -41,9 +47,13 @@ def _load_secrets() -> dict:
 _secrets = _load_secrets()
 BOT_TOKEN = _secrets["BOT_TOKEN"]
 USER_CHAT_ID = int(_secrets.get("USER_CHAT_ID", "0"))
-# The bot operates in exactly one chat. Anything from any other chat (DMs from
-# the owner, other groups, anyone else) is silently dropped — not logged, not
-# answered. ALLOWED_CHAT_ID is mandatory; refuse to start without it.
+# The bot accepts two channels only:
+#   1) the group ALLOWED_CHAT_ID (the Forest Park chat);
+#   2) a private chat (DM) from USER_CHAT_ID — the bot owner.
+# Anything else (DMs from non-owners, other groups) is silently dropped — not
+# logged, not answered. ALLOWED_CHAT_ID is mandatory; refuse to start without it.
+# Owner DMs still carry the data-only invariant: message text is never
+# interpreted as a command, even from the owner.
 if not _secrets.get("ALLOWED_CHAT_ID"):
     raise SystemExit(
         "secrets.env: ALLOWED_CHAT_ID is required (e.g. ALLOWED_CHAT_ID=-1002237202930). "
@@ -226,15 +236,31 @@ _HELP = (
 )
 
 
-def _in_allowed_chat(message) -> bool:
-    return getattr(message, "chat", None) is not None and message.chat.id == ALLOWED_CHAT_ID
+def _is_owner_dm(message) -> bool:
+    """True iff this is a private chat with the bot owner."""
+    chat = getattr(message, "chat", None)
+    user = getattr(message, "from_user", None)
+    if chat is None or user is None:
+        return False
+    if getattr(chat, "type", None) != "private":
+        return False
+    return USER_CHAT_ID != 0 and user.id == USER_CHAT_ID
+
+
+def _accepted(message) -> bool:
+    chat = getattr(message, "chat", None)
+    if chat is None:
+        return False
+    if chat.id == ALLOWED_CHAT_ID:
+        return True
+    return _is_owner_dm(message)
 
 
 @bot.message_handler(commands=["start", "help"])
 def cmd_help(message):
     # /start arrives in DMs when someone opens a conversation with the bot.
-    # We don't engage outside the allowed chat — silent drop.
-    if not _in_allowed_chat(message):
+    # Engage only in the allowed group or in the owner's DM — silent drop otherwise.
+    if not _accepted(message):
         return
     bot.reply_to(message, _HELP)
 
@@ -262,7 +288,7 @@ def base_entry(message) -> dict:
     )
 )
 def handle_forwarded(message):
-    if not _in_allowed_chat(message):
+    if not _accepted(message):
         return
     fwd_name, fwd_username, fwd_date, text = parse_forwarded(message)
     entry = base_entry(message)
@@ -274,13 +300,15 @@ def handle_forwarded(message):
         "text": text,
     })
     append_message(entry)
-    if is_bot_mentioned(message):
+    # In group: only act on explicit @-mention. In owner's DM: every message
+    # is itself the signal "process this now", so always trigger.
+    if _is_owner_dm(message) or is_bot_mentioned(message):
         _ack_and_trigger(message)
 
 
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
-    if not _in_allowed_chat(message):
+    if not _accepted(message):
         return
     entry = base_entry(message)
     entry.update({
@@ -288,7 +316,7 @@ def handle_text(message):
         "text": message.text or message.caption or "",
     })
     append_message(entry)
-    if is_bot_mentioned(message):
+    if _is_owner_dm(message) or is_bot_mentioned(message):
         _ack_and_trigger(message)
 
 
